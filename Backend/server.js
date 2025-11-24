@@ -427,7 +427,7 @@ app.post('/prediccion', requireDNI, async (req, res) => {
       "indice_alergico": Number(indice_alergico)
     };
 
-    const PY_CMD = process.env.PY_CMD || 'python'; // o 'python3'
+    const PY_CMD = process.env.PY_CMD || 'python3'; // o 'python3'
 
 // ⏱ medir tiempo ANTES de llamar a Python
 const inicio = Date.now();
