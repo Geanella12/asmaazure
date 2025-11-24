@@ -16,12 +16,18 @@ const PORT = process.env.PORT || 3001;
 
 // --- CORS ---
 const corsOptions = {
-  origin: ['http://localhost:3000', 'http://localhost:5173'],
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+  origin: [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "https://asmaazure-slal.vercel.app/",   // ⭐ AGREGAR ESTO
+  ],
+  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
   credentials: true,
-  optionsSuccessStatus: 204
+  optionsSuccessStatus: 204,
 };
+
 app.use(cors(corsOptions));
+
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
