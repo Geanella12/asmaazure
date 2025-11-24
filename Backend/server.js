@@ -19,7 +19,7 @@ const corsOptions = {
   origin: [
     "http://localhost:3000",
     "http://localhost:5173",
-    "https://asmaazure-slal.vercel.app/",   // ⭐ AGREGAR ESTO
+    "https://asmaazure-slal.vercel.app",   // ⭐ AGREGAR ESTO
   ],
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
   credentials: true,
