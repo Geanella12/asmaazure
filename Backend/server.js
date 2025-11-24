@@ -15,18 +15,32 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // --- CORS ---
+// --- CORS ---
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "https://asmaazure-slal.vercel.app",   // ✅ sin slash al final
+];
+
 const corsOptions = {
-  origin: [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "https://asmaazure-slal.vercel.app",   // ⭐ AGREGAR ESTO
-  ],
-  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+  origin: function (origin, callback) {
+    // Permitir también peticiones sin origin (Postman, curl, Azure, etc.)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log("❌ CORS bloqueado para origin:", origin);
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
   credentials: true,
   optionsSuccessStatus: 204,
 };
 
 app.use(cors(corsOptions));
+
+// manejar preflight para todas las rutas
+app.options("*", cors(corsOptions));
 
 
 app.use(bodyParser.json());
