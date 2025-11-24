@@ -2,7 +2,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: import.meta.env.REACT_APP_API_URL,  // 🔥 ahora usa ENV
+baseURL: process.env.REACT_APP_API_URL, // 🔥 ahora usa ENV
   withCredentials: false,
   headers: { "Content-Type": "application/json" },
 });
