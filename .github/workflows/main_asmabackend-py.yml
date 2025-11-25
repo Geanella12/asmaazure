@@ -35,7 +35,7 @@ jobs:
         with:
           name: backend-python  # Cambiamos el nombre del artefacto a "backend-python"
           path: |
-            .  # Esto sube la carpeta Python
+            .  
             !antenv/
 
   deploy:
@@ -64,3 +64,4 @@ jobs:
           app-name: 'asmabackend-py'
           slot-name: 'Production'
           package: .  # Despliega desde la carpeta Python
+
