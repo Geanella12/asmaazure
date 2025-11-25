@@ -33,7 +33,7 @@ jobs:
       - name: Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4
         with:
-          name: python-app
+          name: backend-python  # Cambiamos el nombre del artefacto a "backend-python"
           path: |
             .  # Esto sube la carpeta Python
             !antenv/
@@ -49,7 +49,7 @@ jobs:
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
-          name: python-app
+          name: backend-python  # Usamos el mismo nombre aquí para descargar el artefacto
       
       - name: Login to Azure
         uses: azure/login@v2
@@ -60,7 +60,6 @@ jobs:
 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
-        id: deploy-to-webapp
         with:
           app-name: 'asmabackend-py'
           slot-name: 'Production'
