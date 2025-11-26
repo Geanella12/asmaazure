@@ -130,50 +130,7 @@ function contieneCaracteresSQL(texto = '') {
   }
   return count >= 5;
 }
-function ejecutarPrediccion(datosEntrada) {
-    return new Promise((resolve, reject) => {
-        const py = spawn("python", ["predictor_cli.py"]);
 
-        let result = "";
-
-        // Recibir datos que devuelve Python
-        py.stdout.on("data", (data) => {
-            result += data.toString();
-        });
-
-        py.stderr.on("data", (data) => {
-            console.log("Error Python:", data.toString());
-        });
-
-        // Enviar datos hacia Python
-        py.stdin.write(JSON.stringify(datosEntrada));
-        py.stdin.end();
-
-        py.on("close", () => {
-            try {
-                const json = JSON.parse(result);
-                resolve(json);
-            } catch (e) {
-                reject(e);
-            }
-        });
-    });
-}
-app.post("/predict", async (req, res) => {
-    const datos = req.body; // tus 14 datos
-
-    try {
-        const resultado = await ejecutarPrediccion(datos);
-
-        console.log("Predicción:", resultado.prediccion);
-        console.log("⏱ Tiempo de respuesta:", resultado.tiempo_respuesta, "segundos");
-
-        res.json(resultado);
-    } catch (err) {
-        console.log(err);
-        res.status(500).json({ error: "Error en predicción" });
-    }
-});
 
 // Requiere DNI del apoderado en header
 function requireDNI(req, res, next) {
