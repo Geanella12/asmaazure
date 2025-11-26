@@ -1,8 +1,6 @@
 fastapi
-uvicorn
-joblib
-numpy
+uvicorn[standard]
 pandas
-sqlalchemy
-pymysql
-python-dotenv
+joblib
+scikit-learn
+python-multipart
