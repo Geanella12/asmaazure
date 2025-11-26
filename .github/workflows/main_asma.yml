@@ -23,17 +23,20 @@ jobs:
         with:
           node-version: '24.x'
 
+      # 👇 AQUÍ LE DECIMOS QUE TRABAJE EN Backend/node
       - name: npm install, build, and test
+        working-directory: Backend/node
         run: |
           npm install
           npm run build --if-present
           npm run test --if-present
 
+      # 👇 SUBIMOS ESA CARPETA COMO ARTEFACTO
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: .
+          path: Backend/node
 
   deploy:
     runs-on: ubuntu-latest
@@ -61,5 +64,5 @@ jobs:
         with:
           app-name: 'asma'
           slot-name: 'Production'
-          package: .
-          
+          # 👇 LE DECIMOS QUE EL PAQUETE A DESPLEGAR ES Backend/node
+          package: Backend/node
