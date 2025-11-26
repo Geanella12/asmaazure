@@ -295,7 +295,6 @@ app.post('/api/auth/login/apoderado', async (req, res) => {
   }
 });
 
-// ================== PREDICCIÓN (INSERT + PYTHON + UPDATE) ==================
 // ================== PREDICCIÓN (INSERT + LLAMADA A PYTHON POR HTTP + UPDATE) ==================
 app.post('/prediccion', requireDNI, async (req, res) => {
   const creado_por_dni = Number(req.dni);
@@ -314,7 +313,7 @@ app.post('/prediccion', requireDNI, async (req, res) => {
     const trimStr = (x) => String(x || '').trim();
     const toNum   = (x) => (x === '' || x === null || x === undefined) ? null : Number(x);
 
-    // Humedad fallback
+    // Humedad fallback (solo para la BD; el microservicio recalcula por distrito)
     let humedad = b['humedad (%)'];
     if (humedad === undefined || humedad === '' || humedad === null) {
       const h = HUMEDAD_FIJA[trimStr(b.distrito)] ?? 0;
@@ -369,11 +368,11 @@ app.post('/prediccion', requireDNI, async (req, res) => {
     await pool.execute(sqlInsert, paramsInsert);
 
     // 2) LLAMAR AL BACKEND PYTHON POR HTTP (FastAPI)
-       // 2) LLAMAR AL BACKEND PYTHON POR HTTP (FastAPI)
     const mlBaseUrl =
       process.env.ML_API_URL
       || 'https://pythonnuevo-asg0e6hjfxdsafer.chilecentral-01.azurewebsites.net';
 
+    // 👇 Payload alineado con PacienteIn (usando aliases con espacios)
     const payloadForPython = {
       dni: dniPaciente,
       paciente: trimStr(b.paciente),
@@ -425,12 +424,52 @@ app.post('/prediccion', requireDNI, async (req, res) => {
 
       return res.status(500).json({
         success: false,
-        message: 'Error llamando al servicio de predicción',
+        message: 'Error llamando al predictor',
         ml_status: status,
         ml_error: data || err.message,
         ml_url: `${mlBaseUrl}/prediccion`,
       });
     }
+
+    const prob = Number(pred.probabilidad_riesgo || 0);
+    const interpr = String(pred.interpretacion || '');
+    const target_pred = Number(
+      pred.target !== undefined ? pred.target : (pred.target_pred ?? 0)
+    );
+
+    // 3) UPDATE de ESA MISMA FILA CON LOS RESULTADOS DEL MODELO
+    const sqlUpdate = `
+      UPDATE pacientes_asma
+      SET probabilidad_riesgo = ?, interpretacion = ?, target = ?
+      WHERE dni = ? AND fecha_cita = ? AND paciente = ?
+        AND \`humedad (%)\` = ? AND indice_alergico = ?
+      LIMIT 1
+    `;
+    const [upd] = await pool.execute(sqlUpdate, [
+      prob, interpr, target_pred,
+      Number(dniPaciente), String(b.fecha_cita), String(b.paciente),
+      Number(humedad), Number(indice_alergico)
+    ]);
+
+    if (upd.affectedRows === 0) {
+      console.warn('⚠️ UPDATE no encontró la fila recién insertada. Revisa valores de matching.');
+    }
+
+    // 4) RESPUESTA AL FRONTEND
+    return res.json({
+      success: true,
+      target: target_pred,
+      probabilidad_riesgo: prob,
+      interpretacion: interpr
+    });
+
+  } catch (e) {
+    console.error('❌ /prediccion error:', e);
+    return res.status(500).json({ success:false, message:'Error en el servidor', detail: e.message });
+  }
+});
+
+
 
 
     const prob = Number(pred.probabilidad_riesgo || 0);
