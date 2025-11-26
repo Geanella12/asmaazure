@@ -369,9 +369,11 @@ app.post('/prediccion', requireDNI, async (req, res) => {
     await pool.execute(sqlInsert, paramsInsert);
 
     // 2) LLAMAR AL BACKEND PYTHON POR HTTP (FastAPI)
-    const mlBaseUrl = process.env.ML_API_URL || 'https://pythonnuevo-asg0e6hjfxdsafer.chilecentral-01.azurewebsites.net';
+       // 2) LLAMAR AL BACKEND PYTHON POR HTTP (FastAPI)
+    const mlBaseUrl =
+      process.env.ML_API_URL
+      || 'https://pythonnuevo-asg0e6hjfxdsafer.chilecentral-01.azurewebsites.net';
 
-    // 👇 Este payload respeta el esquema PacienteIn del main.py
     const payloadForPython = {
       dni: dniPaciente,
       paciente: trimStr(b.paciente),
@@ -395,17 +397,41 @@ app.post('/prediccion', requireDNI, async (req, res) => {
       indice_alergico: Number(indice_alergico)
     };
 
+    console.log('📡 Llamando API ML en:', `${mlBaseUrl}/prediccion`);
+    console.log('📦 Payload que se envía al ML:', payloadForPython);
+
     let pred;
     try {
-      const mlResponse = await axios.post(`${mlBaseUrl}/prediccion`, payloadForPython, {
-        timeout: 10000
-      });
+      const mlResponse = await axios.post(
+        `${mlBaseUrl}/prediccion`,
+        payloadForPython,
+        { timeout: 15000 }
+      );
+
+      console.log('✅ Respuesta ML status:', mlResponse.status);
+      console.log('✅ Respuesta ML data:', mlResponse.data);
+
       pred = mlResponse.data;
-      console.log('✅ Respuesta ML:', pred);
+
     } catch (err) {
-      console.error('❌ Error llamando API ML:', err.response?.data || err.message);
-      return res.status(500).json({ success:false, message:'Error llamando al servicio de predicción' });
+      const status = err.response?.status;
+      const data   = err.response?.data;
+
+      console.error('❌ Error llamando API ML');
+      console.error('   URL:', `${mlBaseUrl}/prediccion`);
+      console.error('   Status:', status);
+      console.error('   Data:', data);
+      console.error('   Message:', err.message);
+
+      return res.status(500).json({
+        success: false,
+        message: 'Error llamando al servicio de predicción',
+        ml_status: status,
+        ml_error: data || err.message,
+        ml_url: `${mlBaseUrl}/prediccion`,
+      });
     }
+
 
     const prob = Number(pred.probabilidad_riesgo || 0);
     const interpr = String(pred.interpretacion || '');
