@@ -1,13 +1,11 @@
 // ================== server.js ==================
 require('dotenv').config();                         
-const { spawnSync } = require('child_process');
-
 
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const { spawn } = require("child_process");
-const fs = require('fs');
+
+
 const axios = require('axios');   // 👈 NUEVO
 
 const mysql = require('mysql2/promise');
