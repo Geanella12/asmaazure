@@ -414,7 +414,7 @@ app.post('/prediccion', requireDNI, async (req, res) => {
     await pool.execute(sqlInsert, paramsInsert);
 
     // 2) LLAMAR AL BACKEND PYTHON POR HTTP (FastAPI)
-    const mlBaseUrl = process.env.ML_API_URL || 'https://asmabackend-py-cuccgmd2huf8erd5.chilecentral-01.azurewebsites.net';
+    const mlBaseUrl = process.env.ML_API_URL || 'https://pythonnuevo-asg0e6hjfxdsafer.chilecentral-01.azurewebsites.net';
 
     // 👇 Este payload respeta el esquema PacienteIn del main.py
     const payloadForPython = {
