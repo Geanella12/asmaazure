@@ -1,6 +1,7 @@
 // ================== server.js ==================
 require('dotenv').config();                         
 const { spawnSync } = require('child_process');
+const axios = require('axios');   // 👈 NUEVO
 
 const express = require('express');
 const cors = require('cors');
