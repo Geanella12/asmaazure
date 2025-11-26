@@ -341,6 +341,7 @@ app.post('/api/auth/login/apoderado', async (req, res) => {
 });
 
 // ================== PREDICCIÓN (INSERT + PYTHON + UPDATE) ==================
+// ================== PREDICCIÓN (INSERT + LLAMADA A PYTHON POR HTTP + UPDATE) ==================
 app.post('/prediccion', requireDNI, async (req, res) => {
   const creado_por_dni = Number(req.dni);
 
@@ -372,10 +373,10 @@ app.post('/prediccion', requireDNI, async (req, res) => {
     const tipoMasc = Number(b['tipo de mascotas'] || 0);
     const indice_alergico = rinitis + expo + mascota + (tipoMasc === 2 ? 1 : 0);
 
-    // 1) INSERT
+    // 1) INSERT en tu tabla pacientes_asma
     const sqlInsert = `
       INSERT INTO pacientes_asma (
-        creado_por_dni, dni, paciente, genero, annos, fecha_cita, distrito,distrito_cod, \`humedad (%)\`,
+        creado_por_dni, dni, paciente, genero, annos, fecha_cita, distrito, distrito_cod, \`humedad (%)\`,
         \`historial familiar de asma\`, \`familiares con asma\`,
         \`antecedentes de enfermedades respiratorias\`, \`tipo de enfermedades respiratorias\`,
         \`presencia de mascotas en el hogar\`, \`cantidad de mascotas\`, \`tipo de mascotas\`,
@@ -412,9 +413,19 @@ app.post('/prediccion', requireDNI, async (req, res) => {
     ];
     await pool.execute(sqlInsert, paramsInsert);
 
-    // 2) LLAMAR PYTHON
-    const featuresForPredictor = {
+    // 2) LLAMAR AL BACKEND PYTHON POR HTTP (FastAPI)
+    const mlBaseUrl = process.env.ML_API_URL || 'https://asmabackend-py-cuccgmd2huf8erd5.chilecentral-01.azurewebsites.net';
+
+    // 👇 Este payload respeta el esquema PacienteIn del main.py
+    const payloadForPython = {
+      dni: dniPaciente,
+      paciente: trimStr(b.paciente),
+      genero: Number(b.genero || 0),
+      fecha_cita: trimStr(b.fecha_cita),
+      distrito: trimStr(b.distrito),
+
       "humedad (%)": Number(humedad),
+      annos: Number(b.annos || 0),
       "historial familiar de asma": Number(b['historial familiar de asma'] || 0),
       "familiares con asma": Number(b['familiares con asma'] || 0),
       "antecedentes de enfermedades respiratorias": Number(b['antecedentes de enfermedades respiratorias'] || 0),
@@ -426,48 +437,28 @@ app.post('/prediccion', requireDNI, async (req, res) => {
       "frecuencia de episodios de sibilancias": Number(b['frecuencia de episodios de sibilancias'] || 0),
       "presencia de rinitis alergica u otras alergias": Number(b['presencia de rinitis alergica u otras alergias'] || 0),
       "frecuencia de actividad fisica": Number(b['frecuencia de actividad fisica'] || 0),
-      "indice_alergico": Number(indice_alergico)
+      indice_alergico: Number(indice_alergico)
     };
 
-    const PY_CMD = process.env.PY_CMD || 'python3'; // o 'python3'
-
-// ⏱ medir tiempo ANTES de llamar a Python
-const inicio = Date.now();
-
-const py = spawnSync(PY_CMD, ['predictor_cli.py'], {
-  input: JSON.stringify(featuresForPredictor),
-  encoding: 'utf-8'
-});
-
-// ⏱ medir tiempo DESPUÉS de que termina Python
-const fin = Date.now();
-const tiempoSegundos = (fin - inicio) / 1000;
-console.log("========================================");
-console.log("⏱ TIEMPO MODELO RF:", tiempoSegundos.toFixed(4), "segundos");
-console.log("========================================");
-
-    if (py.error) {
-      console.error('❌ Error lanzando Python:', py.error);
-      return res.status(500).json({ success:false, message:'Error llamando al predictor' });
-    }
-    if (py.status !== 0) {
-      console.error('❌ Python stderr:', py.stderr);
-      return res.status(500).json({ success:false, message:'Predictor devolvió error', detail: py.stderr });
-    }
-
     let pred;
-    try { pred = JSON.parse(py.stdout || '{}'); }
-    catch (e) {
-      console.error('❌ No pude parsear salida del predictor:', py.stdout);
-      return res.status(500).json({ success:false, message:'Salida del predictor inválida' });
+    try {
+      const mlResponse = await axios.post(`${mlBaseUrl}/prediccion`, payloadForPython, {
+        timeout: 10000
+      });
+      pred = mlResponse.data;
+      console.log('✅ Respuesta ML:', pred);
+    } catch (err) {
+      console.error('❌ Error llamando API ML:', err.response?.data || err.message);
+      return res.status(500).json({ success:false, message:'Error llamando al servicio de predicción' });
     }
-   
 
     const prob = Number(pred.probabilidad_riesgo || 0);
     const interpr = String(pred.interpretacion || '');
-    const target_pred = Number(pred.target_pred || 0);
+    const target_pred = Number(
+      pred.target !== undefined ? pred.target : (pred.target_pred ?? 0)
+    );
 
-    // 3) UPDATE de ESA MISMA FILA
+    // 3) UPDATE de ESA MISMA FILA CON LOS RESULTADOS DEL MODELO
     const sqlUpdate = `
       UPDATE pacientes_asma
       SET probabilidad_riesgo = ?, interpretacion = ?, target = ?
@@ -485,6 +476,7 @@ console.log("========================================");
       console.warn('⚠️ UPDATE no encontró la fila recién insertada. Revisa valores de matching.');
     }
 
+    // 4) RESPUESTA AL FRONTEND
     return res.json({
       success: true,
       target: target_pred,
@@ -497,6 +489,7 @@ console.log("========================================");
     return res.status(500).json({ success:false, message:'Error en el servidor', detail: e.message });
   }
 });
+
 
 // ================== Formularios ==================
 // 🔒 Lista SOLO los formularios creados por el apoderado autenticado
