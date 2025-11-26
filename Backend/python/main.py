@@ -1,60 +1,101 @@
+# ================== main.py ==================
 import os
 import joblib
-import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from sqlalchemy import create_engine, text
-from dotenv import load_dotenv
+from typing import Optional, Any
 
-# ============ Config ============
-load_dotenv()
-DB_URL = os.getenv("DB_URL", "mysql+pymysql://root:admin@127.0.0.1:3306/asma")
-PORT = int(os.getenv("PORT", "3000"))
-MODEL_PATH = "train_rf_asma.pkl"
+# ============ CONFIGURACIÓN DEL MODELO ============
 
-# distritos → humedad fija (blindaje)
+# Nombre del archivo .pkl (cámbialo si tu modelo se llama diferente)
+MODEL_PATH = os.getenv("MODEL_PATH", "modelo_asma_rf.pkl")
+
+if not os.path.exists(MODEL_PATH):
+    # Si ves este error en los logs de Azure, es porque el .pkl no está junto a main.py
+    raise RuntimeError(f"No se encuentra el archivo de modelo: {MODEL_PATH}. "
+                       f"Verifica que esté subido al mismo directorio en Azure.")
+
+# FEATURES por defecto, por si el .pkl no las trae adentro
+FEATURES_DEFAULT = [
+    "humedad (%)",
+    "historial familiar de asma",
+    "familiares con asma",
+    "antecedentes de enfermedades respiratorias",
+    "tipo de enfermedades respiratorias",
+    "presencia de mascotas en el hogar",
+    "cantidad de mascotas",
+    "tipo de mascotas",
+    "exposicion a alergenos",
+    "frecuencia de episodios de sibilancias",
+    "presencia de rinitis alergica u otras alergias",
+    "frecuencia de actividad fisica",
+    "indice_alergico",
+]
+
+# Carga del modelo
+bundle: Any = joblib.load(MODEL_PATH)
+
+if isinstance(bundle, dict):
+    RF_MODEL = bundle.get("modelo") or bundle.get("model") or bundle
+    FEATURES = bundle.get("features") or bundle.get("feature_names") or FEATURES_DEFAULT
+    THRESHOLD = float(bundle.get("umbral", 0.5))
+else:
+    RF_MODEL = bundle
+    FEATURES = FEATURES_DEFAULT
+    THRESHOLD = 0.5
+
+# Por si acaso, garantizamos que FEATURES tenga al menos los de defecto
+if not FEATURES:
+    FEATURES = FEATURES_DEFAULT
+
+# ============ CONSTANTES ============
+
 HUMEDAD_FIJA = {
-    "ate": 83.9, "callao": 88.4, "comas": 85.6, "los olivos": 70.3,
-    "miraflores": 75.3, "san isidro": 84.9, "san juan de lurigancho": 87.0, "surco": 84.7
+    "ate": 83.9,
+    "callao": 88.4,
+    "comas": 85.6,
+    "los olivos": 70.3,
+    "miraflores": 75.3,
+    "san isidro": 84.9,
+    "san juan de lurigancho": 87.0,
+    "surco": 84.7,
 }
 
-# Carga modelo
-if not os.path.exists(MODEL_PATH):
-    raise RuntimeError(f"No encuentro {MODEL_PATH}. Entrena antes y coloca el .pkl junto a este main.py")
-bundle = joblib.load(MODEL_PATH)
-rf = bundle["modelo"]
-TH = float(bundle.get("umbral", 0.5))
-FEATURES = bundle["features"]  # debe coincidir con lo entrenado
+# ============ APP FASTAPI ============
 
-# Conexión MySQL
-engine = create_engine(DB_URL, pool_pre_ping=True)
+app = FastAPI(
+    title="Asma Predict API",
+    version="1.0.0",
+    description="Microservicio de predicción de riesgo de asma infantil (solo modelo ML)."
+)
 
-# ============ FastAPI ============
-app = FastAPI(title="Asma Predict API", version="1.0.0")
-
-# CORS (permite tu frontend local)
+# CORS (puedes restringir luego a tu backend Node)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # cámbialo a tu dominio en producción
+    allow_origins=["*"],      # luego puedes cambiar a ["https://tu-backend.azurewebsites.net"]
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ============ Schemas ============
+# ============ ESQUEMA DE ENTRADA ============
+
 class PacienteIn(BaseModel):
-    # meta (no son features del modelo)
+    # Campos meta (no se usan para la predicción, pero Node puede enviarlos igual)
     dni: str
     paciente: str
-    genero: int = Field(..., description="M=0, F=1")
+    genero: int = Field(..., description="M=0, F=1 (no se usa en el modelo)")
     fecha_cita: str
     distrito: str
 
-    # features exactas (nombres con espacios tal cual)
-    humedad: float = Field(..., alias="humedad (%)")
+    # Features del modelo
+    # Nota: usamos alias para que puedas enviar nombres con espacios si quieres,
+    # pero Node también puede usar los nombres de los atributos (sin espacios).
+    humedad: Optional[float] = Field(None, alias="humedad (%)")
     annos: int
+
     historial_familiar_asma: int = Field(..., alias="historial familiar de asma")
     familiares_con_asma: int = Field(..., alias="familiares con asma")
     antecedentes_enf_resp: int = Field(..., alias="antecedentes de enfermedades respiratorias")
@@ -69,32 +110,65 @@ class PacienteIn(BaseModel):
     indice_alergico: float
 
     class Config:
-        allow_population_by_field_name = True  # para usar alias como claves JSON
+        allow_population_by_field_name = True  # permite usar el nombre del campo o el alias
 
 
-def interpretar(p: float, th: float, margen: float = 0.10) -> str:
-    if p >= th + margen:
+# ============ FUNCIONES AUXILIARES ============
+
+def interpretar(prob: float, th: float, margen: float = 0.10) -> str:
+    """
+    Devuelve un texto amigable según la probabilidad y el umbral.
+    """
+    if prob >= th + margen:
         return "Riesgo ALTO (positivo)"
-    if p >= th - margen:
+    if prob >= th - margen:
         return "Riesgo MEDIO (cercano al umbral)"
     return "Riesgo BAJO (negativo)"
 
 
 def mapear_humedad_por_distrito(distrito: str) -> float:
+    """
+    Usa la humedad fija según el distrito. Si el distrito no está mapeado, lanza error 400.
+    """
     d = (distrito or "").strip().lower()
     if d not in HUMEDAD_FIJA:
-        raise HTTPException(status_code=400, detail=f"Distrito desconocido: '{distrito}'.")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Distrito desconocido o no mapeado para humedad: '{distrito}'. "
+                   f"Configura HUMEDAD_FIJA en main.py."
+        )
     return float(HUMEDAD_FIJA[d])
+
+
+# ============ ENDPOINTS ============
+
+@app.get("/health")
+def health():
+    """
+    Endpoint simple para verificar que la API y el modelo están cargados.
+    """
+    return {
+        "ok": True,
+        "modelo_cargado": MODEL_PATH,
+        "features_esperadas": FEATURES,
+        "umbral": THRESHOLD,
+    }
 
 
 @app.post("/prediccion")
 def prediccion(p: PacienteIn):
-    # 1) Blindaje: forzar humedad según distrito
-    humedad_fija = mapear_humedad_por_distrito(p.distrito)
+    """
+    Recibe los datos del paciente y devuelve:
+    - target (0/1)
+    - probabilidad_riesgo
+    - interpretacion (texto)
+    """
+    # 1) Determinar humedad según distrito (ignoramos lo que venga en 'humedad' para que sea consistente)
+    humedad_val = mapear_humedad_por_distrito(p.distrito)
 
-    # 2) Preparar features en el orden EXACTO del entrenamiento
+    # 2) Construir la fila con los nombres EXACTOS que espera el modelo
     fila = {
-        "humedad (%)": humedad_fija,  # ignoramos lo que venga del front; usamos la fija
+        "humedad (%)": humedad_val,
         "historial familiar de asma": p.historial_familiar_asma,
         "familiares con asma": p.familiares_con_asma,
         "antecedentes de enfermedades respiratorias": p.antecedentes_enf_resp,
@@ -109,107 +183,35 @@ def prediccion(p: PacienteIn):
         "indice_alergico": p.indice_alergico,
     }
 
-    # asegurar que coincidan las features
+    # 3) Verificar que todas las features requeridas por el modelo están presentes
     for f in FEATURES:
         if f not in fila:
-            raise HTTPException(status_code=400, detail=f"Falta feature requerida: '{f}'")
-
-    X = pd.DataFrame([fila], columns=FEATURES)
-    prob = float(rf.predict_proba(X)[:, 1][0])
-    prob = round(prob, 4)
-    target_pred = int(prob >= TH)
-    interpre = interpretar(prob, TH)
-
-    # 3) Guardar/actualizar en MySQL
-    #   3a) upsert en pacientes_asma (básico). Si tu tabla ya existe con PK en 'paciente', esto hará REPLACE.
-    try:
-        with engine.begin() as conn:
-            # crear tabla si no existe (simple)
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS pacientes_asma (
-                  dni VARCHAR(20), paciente VARCHAR(100), genero INT, fecha_cita DATE,
-                  distrito VARCHAR(64),
-                  `humedad (%)` DECIMAL(5,2),
-                  annos INT,
-                  `historial familiar de asma` INT,
-                  `familiares con asma` INT,
-                  `antecedentes de enfermedades respiratorias` INT,
-                  `tipo de enfermedades respiratorias` INT,
-                  `presencia de mascotas en el hogar` INT,
-                  `cantidad de mascotas` INT,
-                  `tipo de mascotas` INT,
-                  `exposicion a alergenos` INT,
-                  `frecuencia de episodios de sibilancias` INT,
-                  `presencia de rinitis alergica u otras alergias` INT,
-                  `frecuencia de actividad fisica` INT,
-                  indice_alergico DECIMAL(5,2)
-                );
-            """))
-            # insert (puedes mejorar a UPSERT con PK según tu esquema)
-            conn.execute(
-                text("""
-                    INSERT INTO pacientes_asma
-                    (dni, paciente, genero, fecha_cita, distrito, `humedad (%)`, annos,
-                     `historial familiar de asma`, `familiares con asma`,
-                     `antecedentes de enfermedades respiratorias`, `tipo de enfermedades respiratorias`,
-                     `presencia de mascotas en el hogar`, `cantidad de mascotas`, `tipo de mascotas`,
-                     `exposicion a alergenos`, `frecuencia de episodios de sibilancias`,
-                     `presencia de rinitis alergica u otras alergias`, `frecuencia de actividad fisica`,
-                     indice_alergico)
-                    VALUES
-                    (:dni, :paciente, :genero, :fecha_cita, :distrito, :humedad, :annos,
-                     :hist_hist, :fam_asma,
-                     :ant_resp, :tipo_resp,
-                     :pres_masc, :cant_masc, :tipo_masc,
-                     :expo_alerg, :frec_sib,
-                     :rinitis, :frec_act,
-                     :indice)
-                """),
-                {
-                    "dni": p.dni, "paciente": p.paciente, "genero": p.genero, "fecha_cita": p.fecha_cita,
-                    "distrito": p.distrito, "humedad": humedad_fija, "annos": p.annos,
-                    "hist_hist": p.historial_familiar_asma, "fam_asma": p.familiares_con_asma,
-                    "ant_resp": p.antecedentes_enf_resp, "tipo_resp": p.tipo_enf_resp,
-                    "pres_masc": p.presencia_mascotas, "cant_masc": p.cantidad_mascotas, "tipo_masc": p.tipo_mascotas,
-                    "expo_alerg": p.exposicion_alergenos, "frec_sib": p.frec_sibilancias,
-                    "rinitis": p.rinitis_alergica, "frec_act": p.frec_actividad,
-                    "indice": p.indice_alergico
-                }
+            raise HTTPException(
+                status_code=400,
+                detail=f"Falta la feature requerida por el modelo: '{f}'. "
+                       f"Revisa el mapeo en main.py."
             )
 
-            #   3b) upsert tablas de salida simples
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS probabilidad_riesgo (paciente VARCHAR(100), probabilidad_riesgo DECIMAL(6,4));
-            """))
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS interpretacion (paciente VARCHAR(100), interpretacion VARCHAR(64));
-            """))
+    # 4) Crear DataFrame en el orden que espera el modelo
+    X = pd.DataFrame([fila], columns=FEATURES)
 
-            # limpia previos y escribe actuales (simple)
-            conn.execute(text("DELETE FROM probabilidad_riesgo WHERE paciente=:pac"), {"pac": p.paciente})
-            conn.execute(text("INSERT INTO probabilidad_riesgo (paciente, probabilidad_riesgo) VALUES (:pac, :pr)"),
-                         {"pac": p.paciente, "pr": prob})
-            conn.execute(text("DELETE FROM interpretacion WHERE paciente=:pac"), {"pac": p.paciente})
-            conn.execute(text("INSERT INTO interpretacion (paciente, interpretacion) VALUES (:pac, :it)"),
-                         {"pac": p.paciente, "it": interpre})
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al escribir en MySQL: {e}")
-
-    # 4) Respuesta para el frontend
-    return {
-        "target": target_pred,                 # predicción binaria por umbral guardado
-        "probabilidad_riesgo": prob,          # 0..1 (redondeado a 4)
-        "interpretacion": interpre
-        # "archivo_pdf": ""  # si luego generas PDFs, aquí mandas base64 o URL
-    }
-
-
-@app.get("/health")
-def health():
-    # chequear DB y modelo
+    # 5) Predicción
     try:
-        with engine.begin() as conn:
-            conn.execute(text("SELECT 1"))
+        proba = RF_MODEL.predict_proba(X)[:, 1][0]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"DB error: {e}")
-    return {"ok": True, "umbral": TH, "features": FEATURES}
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al predecir con el modelo: {str(e)}"
+        )
+
+    prob = round(float(proba), 4)
+    target_pred = int(prob >= THRESHOLD)
+    texto = interpretar(prob, THRESHOLD)
+
+    # 6) Respuesta (Node puede usar esto para hacer el UPDATE en MySQL)
+    return {
+        "target": target_pred,
+        "probabilidad_riesgo": prob,
+        "interpretacion": texto,
+        "umbral": THRESHOLD,
+    }
