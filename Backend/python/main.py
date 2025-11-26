@@ -10,7 +10,7 @@ from typing import Optional, Any
 # ============ CONFIGURACIÓN DEL MODELO ============
 
 # Nombre del archivo .pkl (cámbialo si tu modelo se llama diferente)
-MODEL_PATH = os.getenv("MODEL_PATH", "modelo_asma_rf.pkl")
+MODEL_PATH = os.getenv("MODEL_PATH", "modelo_asma_rf_azure.pkl")
 
 if not os.path.exists(MODEL_PATH):
     # Si ves este error en los logs de Azure, es porque el .pkl no está junto a main.py
