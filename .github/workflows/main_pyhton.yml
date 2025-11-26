@@ -14,17 +14,14 @@ jobs:
       contents: read
 
     steps:
-      # 1️⃣ Descargar el repositorio
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Configurar Python 3.11 (versión recomendada por Azure)
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # 3️⃣ Instalar dependencias SOLO dentro de Backend/python
       - name: Install requirements
         working-directory: Backend/python
         run: |
@@ -32,7 +29,6 @@ jobs:
           source venv/bin/activate
           pip install -r requirements.txt
 
-      # 4️⃣ Login en Azure
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -40,10 +36,9 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_C12086AF686540ECA27E94A0E9ED0485 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_5DF1298B1BC2427686D448DB186F4336 }}
 
-      # 5️⃣ Subir SOLO la carpeta Backend/python al App Service
       - name: Deploy Backend/python to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'python'   # 👈 Asegúrate del nombre EXACTO de tu App Service
+          app-name: 'python'      # 👈 EL NOMBRE EXACTO DE TU APP SERVICE
           slot-name: 'Production'
-          package: Backend/python       # 👈 SOLO esta carpeta se va a wwwroot
+          package: Backend/python  # 👈 Solo se despliega esta carpeta
