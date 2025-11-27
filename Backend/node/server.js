@@ -470,14 +470,6 @@ app.post('/prediccion', requireDNI, async (req, res) => {
 });
 
 
-
-
-    const prob = Number(pred.probabilidad_riesgo || 0);
-    const interpr = String(pred.interpretacion || '');
-    const target_pred = Number(
-      pred.target !== undefined ? pred.target : (pred.target_pred ?? 0)
-    );
-
     // 3) UPDATE de ESA MISMA FILA CON LOS RESULTADOS DEL MODELO
     const sqlUpdate = `
       UPDATE pacientes_asma
