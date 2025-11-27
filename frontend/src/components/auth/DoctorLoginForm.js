@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import axios from 'axios';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+
 const DoctorLoginForm = () => {
   const [formData, setFormData] = useState({ username: '', password: '' });
   const [error, setError] = useState('');
@@ -23,9 +25,9 @@ const DoctorLoginForm = () => {
     setError('');
 
     try {
-      const res = await axios.post('http://localhost:3001/api/auth/login/doctor', {
+      const res = await axios.post(`${API_BASE_URL}/api/auth/login/doctor`, {
         usuario: formData.username,
-        contraseña: formData.password
+        contraseña: formData.password,
       });
 
       if (res.data?.success) {
@@ -33,7 +35,7 @@ const DoctorLoginForm = () => {
           username: formData.username,
           name: `Dr. ${res.data.usuario}`,
           role: 'doctor',
-          dni: res.data.dni
+          dni: res.data.dni,
         });
 
         navigate('/doctor/dashboard');
@@ -92,7 +94,6 @@ const DoctorLoginForm = () => {
             {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
           </button>
 
-          {/* 🔽 Texto con las credenciales del administrador */}
           <div style={{ marginTop: '16px', fontSize: '14px', color: '#555', textAlign: 'center' }}>
             <p><strong>Usuario:</strong> doctor</p>
             <p><strong>Contraseña:</strong> doctor123</p>
