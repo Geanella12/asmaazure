@@ -34,7 +34,6 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-// manejar preflight para todas las rutas
 app.options('*', cors(corsOptions));
 
 app.use(bodyParser.json());
@@ -316,17 +315,25 @@ app.post('/api/auth/login/apoderado', async (req, res) => {
 // ================== PREDICCIÓN (INSERT + ML + UPDATE) ==================
 app.post('/prediccion', requireDNI, async (req, res) => {
   const creado_por_dni = Number(req.dni);
+  const b = req.body || {};
+
+  console.log('📥 [PRED] body recibido:', b);
 
   try {
-    const b = req.body || {};
+    // -------- 0. VALIDACIONES --------
     const dniPaciente = String(b.DNI || b.dni || '').trim();
 
     if (!/^\d{8}$/.test(dniPaciente)) {
-      return res.status(400).json({ success: false, message: 'DNI del paciente inválido' });
+      return res.status(400).json({
+        success: false,
+        step: 'validacion',
+        message: 'DNI del paciente inválido',
+      });
     }
     if (!b.paciente || !b.fecha_cita || !b.distrito) {
       return res.status(400).json({
         success: false,
+        step: 'validacion',
         message: 'Faltan campos requeridos (paciente/fecha_cita/distrito)',
       });
     }
@@ -335,21 +342,20 @@ app.post('/prediccion', requireDNI, async (req, res) => {
     const toNum = (x) =>
       x === '' || x === null || x === undefined ? null : Number(x);
 
-    // Humedad fallback (solo para la BD; el microservicio recalcula por distrito)
+    // -------- 1. HUMEDAD + ÍNDICE ALÉRGICO --------
     let humedad = b['humedad (%)'];
     if (humedad === undefined || humedad === '' || humedad === null) {
       const h = HUMEDAD_FIJA[trimStr(b.distrito)] ?? 0;
       humedad = h;
     }
 
-    // Índice alérgico
     const rinitis = Number(b['presencia de rinitis alergica u otras alergias'] || 0);
     const expo = Number(b['exposicion a alergenos'] || 0);
     const mascota = Number(b['presencia de mascotas en el hogar'] || 0);
     const tipoMasc = Number(b['tipo de mascotas'] || 0);
     const indice_alergico = rinitis + expo + mascota + (tipoMasc === 2 ? 1 : 0);
 
-    // 1) INSERT en tabla pacientes_asma
+    // -------- 2. INSERT EN pacientes_asma --------
     const sqlInsert = `
       INSERT INTO pacientes_asma (
         creado_por_dni, dni, paciente, genero, annos, fecha_cita, distrito, distrito_cod, \`humedad (%)\`,
@@ -391,9 +397,20 @@ app.post('/prediccion', requireDNI, async (req, res) => {
       null,
     ];
 
-    await pool.execute(sqlInsert, paramsInsert);
+    try {
+      console.log('📝 [PRED] Ejecutando INSERT pacientes_asma');
+      await pool.execute(sqlInsert, paramsInsert);
+    } catch (e) {
+      console.error('❌ [PRED] Error en INSERT:', e);
+      return res.status(500).json({
+        success: false,
+        step: 'insert',
+        message: 'Error al insertar paciente',
+        db_error: e.message,
+      });
+    }
 
-    // 2) LLAMAR BACKEND PYTHON POR HTTP (FastAPI)
+    // -------- 3. LLAMAR BACKEND PYTHON --------
     const mlBaseUrl =
       process.env.ML_API_URL ||
       'https://pythonnuevo-asg0e6hjfxdsafer.chilecentral-01.azurewebsites.net';
@@ -433,8 +450,8 @@ app.post('/prediccion', requireDNI, async (req, res) => {
       indice_alergico: Number(indice_alergico),
     };
 
-    console.log('📡 Llamando API ML en:', `${mlBaseUrl}/prediccion`);
-    console.log('📦 Payload que se envía al ML:', payloadForPython);
+    console.log('📡 [PRED] Llamando API ML en:', `${mlBaseUrl}/prediccion`);
+    console.log('📦 [PRED] Payload que se envía al ML:', payloadForPython);
 
     let pred;
     try {
@@ -444,22 +461,23 @@ app.post('/prediccion', requireDNI, async (req, res) => {
         { timeout: 15000 }
       );
 
-      console.log('✅ Respuesta ML status:', mlResponse.status);
-      console.log('✅ Respuesta ML data:', mlResponse.data);
+      console.log('✅ [PRED] Respuesta ML status:', mlResponse.status);
+      console.log('✅ [PRED] Respuesta ML data:', mlResponse.data);
 
       pred = mlResponse.data;
     } catch (err) {
       const status = err.response?.status;
       const data = err.response?.data;
 
-      console.error('❌ Error llamando API ML');
+      console.error('❌ [PRED] Error llamando API ML');
       console.error('   URL:', `${mlBaseUrl}/prediccion`);
       console.error('   Status:', status);
       console.error('   Data:', data);
       console.error('   Message:', err.message);
 
-      return res.status(500).json({
+      return res.status(502).json({
         success: false,
+        step: 'ml',
         message: 'Error llamando al predictor',
         ml_status: status,
         ml_error: data || err.message,
@@ -467,13 +485,13 @@ app.post('/prediccion', requireDNI, async (req, res) => {
       });
     }
 
+    // -------- 4. UPDATE CON RESULTADO --------
     const prob = Number(pred.probabilidad_riesgo || 0);
     const interpr = String(pred.interpretacion || '');
     const target_pred = Number(
-      pred.target !== undefined ? pred.target : pred.target_pred ?? 0
+      pred.target !== undefined ? pred.target : (pred.target_pred ?? 0)
     );
 
-    // 3) UPDATE de ESA MISMA FILA CON LOS RESULTADOS DEL MODELO
     const sqlUpdate = `
       UPDATE pacientes_asma
       SET probabilidad_riesgo = ?, interpretacion = ?, target = ?
@@ -482,41 +500,49 @@ app.post('/prediccion', requireDNI, async (req, res) => {
       LIMIT 1
     `;
 
-    const [upd] = await pool.execute(sqlUpdate, [
-      prob,
-      interpr,
-      target_pred,
-      Number(dniPaciente),
-      String(b.fecha_cita),
-      String(b.paciente),
-      Number(humedad),
-      Number(indice_alergico),
-    ]);
+    try {
+      console.log('🛠 [PRED] Ejecutando UPDATE con resultados del modelo');
+      const [upd] = await pool.execute(sqlUpdate, [
+        prob,
+        interpr,
+        target_pred,
+        Number(dniPaciente),
+        String(b.fecha_cita),
+        String(b.paciente),
+        Number(humedad),
+        Number(indice_alergico),
+      ]);
 
-    if (upd.affectedRows === 0) {
-      console.warn(
-        '⚠️ UPDATE no encontró la fila recién insertada. Revisa valores de matching.'
-      );
+      if (upd.affectedRows === 0) {
+        console.warn('⚠️ [PRED] UPDATE no encontró la fila recién insertada.');
+      }
+    } catch (e) {
+      console.error('❌ [PRED] Error en UPDATE:', e);
+      return res.status(500).json({
+        success: false,
+        step: 'update',
+        message: 'Error al actualizar paciente con el resultado',
+        db_error: e.message,
+      });
     }
 
-    // 4) RESPUESTA AL FRONTEND
+    // -------- 5. RESPUESTA AL FRONT --------
     return res.json({
       success: true,
+      step: 'ok',
       target: target_pred,
       probabilidad_riesgo: prob,
       interpretacion: interpr,
     });
   } catch (e) {
-    console.error('❌ /prediccion error:', e);
+    console.error('❌ [PRED] Error inesperado:', e);
     return res
       .status(500)
-      .json({ success: false, message: 'Error en el servidor', detail: e.message });
+      .json({ success: false, step: 'fatal', message: 'Error en el servidor', detail: e.message });
   }
 });
 
 // ================== Formularios ==================
-// Lista SOLO los formularios creados por el apoderado autenticado
-// header: x-dni (DNI del apoderado)
 app.get('/api/forms/mine', requireDNI, async (req, res) => {
   try {
     const creadorDNI = String(req.dni);
@@ -540,7 +566,6 @@ app.get('/api/forms/mine', requireDNI, async (req, res) => {
 });
 
 // Formularios recientes (doctor)
-// GET /api/forms/recent?limit=5&offset=0   (x-role: doctor)
 app.get('/api/forms/recent', requireDoctor, async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit ?? '5', 10) || 5, 50);
@@ -574,7 +599,7 @@ app.get('/api/forms/recent', requireDoctor, async (req, res) => {
   }
 });
 
-// GET /api/forms/detail?dni=XXXXXXXX&fecha=YYYY-MM-DD&paciente=Nombre Apellido
+// Detalle de formulario (doctor)
 app.get('/api/forms/detail', requireDoctor, async (req, res) => {
   try {
     const { dni, fecha, paciente } = req.query;
@@ -600,7 +625,7 @@ app.get('/api/forms/detail', requireDoctor, async (req, res) => {
   }
 });
 
-// Solo médico: formularios por DNI
+// Formularios de un paciente por DNI (doctor)
 app.get('/api/forms/:dni', requireDoctor, async (req, res) => {
   try {
     const dni = Number(req.params.dni);
