@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 3001;
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
-  "https://asmaazure-slal.vercel.app",   // ✅ sin slash al final
+  "https://asmaazure-k4lr.vercel.app",   // ✅ sin slash al final
 ];
 
 const corsOptions = {
