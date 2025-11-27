@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const API_BASE_URL = import.meta.env.REACT_APP_API_URL || 'http://localhost:3001';
 
 const DoctorLoginForm = () => {
   const [formData, setFormData] = useState({ username: '', password: '' });
@@ -25,7 +25,7 @@ const DoctorLoginForm = () => {
     setError('');
 
     try {
-      const res = await axios.post(`${API_BASE_URL}/api/auth/login/doctor`, {
+      const res = await axios.post(`${APP_API_URL}/api/auth/login/doctor`, {
         usuario: formData.username,
         contraseña: formData.password,
       });
