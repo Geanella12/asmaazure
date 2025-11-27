@@ -1,56 +1,56 @@
 // src/components/doctor/DoctorLoginForm.jsx
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
-import axios from 'axios';
-
-const API_BASE_URL = import.meta.env.REACT_APP_API_URL || 'http://localhost:3001';
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext";
+import api from "../../api"; // 👈 usamos el axios configurado
 
 const DoctorLoginForm = () => {
-  const [formData, setFormData] = useState({ username: '', password: '' });
-  const [error, setError] = useState('');
+  const [formData, setFormData] = useState({ username: "", password: "" });
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    setError('');
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    setError("");
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
+    setError("");
 
     try {
-      const res = await axios.post(`${APP_API_URL}/api/auth/login/doctor`, {
+      // 👇 usamos api (que ya tiene baseURL desde .env)
+      const res = await api.post("/api/auth/login/doctor", {
         usuario: formData.username,
         contraseña: formData.password,
       });
 
       if (res.data?.success) {
+        // guardar usuario en el contexto
         login({
           username: formData.username,
           name: `Dr. ${res.data.usuario}`,
-          role: 'doctor',
+          role: "doctor",
           dni: res.data.dni,
         });
 
-        navigate('/doctor/dashboard');
+        navigate("/doctor/dashboard");
       } else {
-        setError('Credenciales incorrectas');
+        setError("Credenciales incorrectas");
       }
     } catch (err) {
       if (err.response) {
-        if (err.response.status === 401) setError('Contraseña incorrecta');
-        else if (err.response.status === 402) setError('Usuario incorrecto');
-        else setError('Error del servidor. Intenta nuevamente.');
+        if (err.response.status === 401) setError("Contraseña incorrecta");
+        else if (err.response.status === 402) setError("Usuario incorrecto");
+        else setError("Error del servidor. Intenta nuevamente.");
       } else if (err.request) {
-        setError('No se pudo conectar con el servidor.');
+        setError("No se pudo conectar con el servidor.");
       } else {
-        setError('Error inesperado: ' + err.message);
+        setError("Error inesperado: " + err.message);
       }
     } finally {
       setLoading(false);
@@ -91,12 +91,23 @@ const DoctorLoginForm = () => {
           {error && <div className="error-message">{error}</div>}
 
           <button type="submit" disabled={loading} className="btn-primary">
-            {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
+            {loading ? "Iniciando sesión..." : "Iniciar Sesión"}
           </button>
 
-          <div style={{ marginTop: '16px', fontSize: '14px', color: '#555', textAlign: 'center' }}>
-            <p><strong>Usuario:</strong> doctor</p>
-            <p><strong>Contraseña:</strong> doctor123</p>
+          <div
+            style={{
+              marginTop: "16px",
+              fontSize: "14px",
+              color: "#555",
+              textAlign: "center",
+            }}
+          >
+            <p>
+              <strong>Usuario:</strong> doctor
+            </p>
+            <p>
+              <strong>Contraseña:</strong> doctor123
+            </p>
           </div>
         </form>
       </div>
