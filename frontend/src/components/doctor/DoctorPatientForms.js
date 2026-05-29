@@ -19,7 +19,7 @@ export default function DoctorPatientForms() {
   const [openDetail, setOpenDetail] = useState(false);
   const [rowForDetail, setRowForDetail] = useState(null);
 
-  const [limit, setLimit] = useState(5);
+  const [limit] = useState(5);
   const [offset, setOffset] = useState(0);
 
   const fetchRecientes = async () => {
@@ -53,7 +53,10 @@ export default function DoctorPatientForms() {
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchRecientes(); /* eslint-disable-next-line */ }, [limit, offset]);
+// eslint-disable-next-line react-hooks/exhaustive-deps
+useEffect(() => {
+  fetchRecientes();
+}, [limit, offset]);
 const handlePdf = async (row) => {
   try {
     const { dni, paciente } = row;
