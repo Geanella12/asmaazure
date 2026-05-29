@@ -59,7 +59,7 @@ const PatientForm = ({ onSaved }) => {
   }, [form]);
 
   const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
+    const { name, value, checked } = e.target;
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
 
     if (name === 'acepta') {
