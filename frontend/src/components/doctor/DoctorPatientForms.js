@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api";
 import { useAuth } from "../../contexts/AuthContext";
@@ -22,7 +22,7 @@ export default function DoctorPatientForms() {
   const [limit] = useState(5);
   const [offset, setOffset] = useState(0);
 
-  const fetchRecientes = async () => {
+const fetchRecientes = useCallback(async () => {
     setErr(""); setLoading(true);
     try {
       const { data } = await api.get(`/api/forms/recent?limit=${limit}&offset=${offset}`, {
@@ -33,7 +33,7 @@ export default function DoctorPatientForms() {
       setErr(e?.response?.data?.detail || e?.response?.data?.message || "Error al listar recientes");
       setRows([]);
     } finally { setLoading(false); }
-  };
+  }, [limit, offset]);
 
   const buscarPorDni = async (ev) => {
     ev?.preventDefault?.();
@@ -53,7 +53,7 @@ export default function DoctorPatientForms() {
     } finally { setLoading(false); }
   };
 
-// eslint-disable-next-line react-hooks/exhaustive-deps
+
 useEffect(() => {
   fetchRecientes();
 }, [limit, offset]);
