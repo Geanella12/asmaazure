@@ -103,7 +103,7 @@ const PatientForm = ({ onSaved }) => {
     });
 
     if (String(form.dni).length !== 8) err.dni = 'DNI debe tener 8 dígitos';
-    if (Number(form.annos) < 0 || Number(form.annos) > 12) err.annos = 'Años fuera de rango';
+    if (Number(form.annos) < 0 || Number(form.annos) > 5) err.annos = 'Años fuera de rango';
     if (!form.acepta) err.acepta = 'Debes aceptar el tratamiento de datos (Ley N.º 29733)';
 
     setErrors(err);
@@ -243,7 +243,7 @@ const PatientForm = ({ onSaved }) => {
       {/* Años */}
       <div style={{marginTop:12}}>
         <label>Años *</label>
-        <input name="annos" type="number" min="0" max="12" value={form.annos} onChange={handleChange} className={errors.annos?'error':''}/>
+        <input name="annos" type="number" min="0" max="5" value={form.annos} onChange={handleChange} className={errors.annos?'error':''}/>
         {errors.annos && <div className="error-message">{errors.annos}</div>}
       </div>
 
