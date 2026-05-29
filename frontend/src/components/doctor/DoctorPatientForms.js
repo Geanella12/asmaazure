@@ -56,7 +56,7 @@ const fetchRecientes = useCallback(async () => {
 
 useEffect(() => {
   fetchRecientes();
-}, [limit, offset]);
+}, [fetchRecientes]);
 const handlePdf = async (row) => {
   try {
     const { dni, paciente } = row;
