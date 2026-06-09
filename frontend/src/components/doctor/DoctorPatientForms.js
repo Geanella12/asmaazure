@@ -28,7 +28,19 @@ const fetchRecientes = useCallback(async () => {
       const { data } = await api.get(`/api/forms/recent?limit=${limit}&offset=${offset}`, {
         headers: { "x-role": "doctor" },
       });
-      setRows(Array.isArray(data?.data) ? data.data : []);
+      const registros = Array.isArray(data?.data) ? data.data : [];
+
+const registrosCompletos = registros.filter(r =>
+  r.dni &&
+  r.fecha_cita &&
+  r.target !== null &&
+  r.target !== undefined &&
+  r.probabilidad_riesgo !== null &&
+  r.probabilidad_riesgo !== undefined &&
+  r.interpretacion
+);
+
+setRows(registrosCompletos);
     } catch (e) {
       setErr(e?.response?.data?.detail || e?.response?.data?.message || "Error al listar recientes");
       setRows([]);
@@ -46,7 +58,19 @@ const fetchRecientes = useCallback(async () => {
       const { data } = await api.get(`/api/forms/${dni}`, {
         headers: { "x-role": "doctor" },
       });
-      setRows(Array.isArray(data?.data) ? data.data : []);
+const registros = Array.isArray(data?.data) ? data.data : [];
+
+const registrosCompletos = registros.filter(r =>
+  r.dni &&
+  r.fecha_cita &&
+  r.target !== null &&
+  r.target !== undefined &&
+  r.probabilidad_riesgo !== null &&
+  r.probabilidad_riesgo !== undefined &&
+  r.interpretacion
+);
+
+setRows(registrosCompletos);
     } catch (e) {
       setErr(e?.response?.data?.message || "No se pudo obtener datos");
       setRows([]);
