@@ -17,6 +17,13 @@ const UserRegisterForm = () => {
   });
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
+  
+
+const getAdultMaxDate = () => {
+  const date = new Date();
+  date.setFullYear(date.getFullYear() - 18);
+  return date.toISOString().split('T')[0];
+};
 
   const handleChange = (e) => {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -25,16 +32,30 @@ const UserRegisterForm = () => {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      await api.post('/api/auth/register', form);
-      setOk('Registro exitoso. Ahora inicia sesión.');
-      setTimeout(() => navigate('/user/login', { replace: true }), 800);
-    } catch (err) {
-      console.error(err);
-      setError(err?.response?.data?.message || 'No se pudo registrar.');
-    }
-  };
+  e.preventDefault();
+
+  const todayDate = new Date();
+  const birthdayDate = new Date(form.birthday);
+
+  if (birthdayDate > todayDate) {
+    setError('La fecha de nacimiento no puede ser futura.');
+    return;
+  }
+
+  if (form.birthday > getAdultMaxDate()) {
+    setError('El apoderado debe ser mayor de edad.');
+    return;
+  }
+
+  try {
+    await api.post('/api/auth/register', form);
+    setOk('Registro exitoso. Ahora inicia sesión.');
+    setTimeout(() => navigate('/user/login', { replace: true }), 800);
+  } catch (err) {
+    console.error(err);
+    setError(err?.response?.data?.message || 'No se pudo registrar.');
+  }
+};
 
   return (
     <div className="login-container">
@@ -61,13 +82,14 @@ const UserRegisterForm = () => {
 
               <div className="form-group">
                 <label>Fecha de nacimiento</label>
-                <input
-                  type="date"
-                  name="birthday"
-                  value={form.birthday}
-                  onChange={handleChange}
-                  required
-                />
+<input
+  type="date"
+  name="birthday"
+  value={form.birthday}
+  onChange={handleChange}
+  max={getAdultMaxDate()}
+  required
+/>
               </div>
             </div>
 
