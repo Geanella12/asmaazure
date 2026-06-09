@@ -87,7 +87,7 @@ const getAdultMaxDate = () => {
   name="birthday"
   value={form.birthday}
   onChange={handleChange}
-  max={getAdultMaxDate()}
+  max={new Date().toISOString().split('T')[0]}
   required
 />
               </div>
