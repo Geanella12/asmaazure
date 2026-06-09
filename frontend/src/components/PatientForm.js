@@ -220,8 +220,15 @@ const PatientForm = ({ onSaved }) => {
           {errors.genero && <div className="error-message">{errors.genero}</div>}
         </div>
         <div>
-          <label>Fecha de cita *</label>
-          <input name="fecha_cita" type="date" value={form.fecha_cita} onChange={handleChange} className={errors.fecha_cita?'error':''}/>
+          <label>Fecha de próxima cita *</label>
+          <input
+  name="fecha_cita"
+  type="date"
+  value={form.fecha_cita}
+  onChange={handleChange}
+  min={new Date().toISOString().split('T')[0]}
+  className={errors.fecha_cita?'error':''}
+/>
           {errors.fecha_cita && <div className="error-message">{errors.fecha_cita}</div>}
         </div>
       </div>
@@ -364,7 +371,7 @@ const PatientForm = ({ onSaved }) => {
           disabled={loading}
           style={{padding:'10px 16px', borderRadius:10, border:'1px solid #2f6fed', background:'#2f6fed', color:'#fff', fontWeight:700, cursor:'pointer'}}
         >
-          {loading ? 'Procesando…' : 'Guardar Paciente'}
+          {loading ? 'Procesando…' : 'Enviar'}
         </button>
         <button
           className="btn-secondary"
