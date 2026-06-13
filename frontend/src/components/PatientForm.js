@@ -112,7 +112,11 @@ const PatientForm = ({ onSaved }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validate()) return;
+      const isValid = validate();
+    if (!isValid) {
+    alert('Falta completar uno o más campos obligatorios.');
+    return;
+  }
 
     try {
       setLoading(true);
